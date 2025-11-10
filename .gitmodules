@@ -1,0 +1,4 @@
+[submodule "Parser"]
+	path = Parser
+	url = https://github.com/BoB14th-SLiMe/Parser.git
+	branch = feat/5
