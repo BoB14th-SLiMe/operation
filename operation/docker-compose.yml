@@ -5,12 +5,17 @@ services:
     image: redis:7-alpine
     container_name: redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     networks:
       - ot-network
-    command: redis-server --appendonly yes --save 60 1000
+    command: >
+      redis-server 
+      --appendonly yes 
+      --save 60 1000
+      --maxmemory ${REDIS_MEMORY_LIMIT:-512M}
+      --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -20,23 +25,47 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: ${REDIS_MEMORY_LIMIT:-512M}
 
   parser:
     build:
       context: ../Parser 
       dockerfile: Dockerfile
-      args:
-        - ENABLE_ASAN=OFF
     container_name: parser
     environment:
-      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-192.168.0.100} 
+      # Elasticsearch Configuration
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-localhost}
       - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - CAPTURE_INTERFACE=${CAPTURE_INTERFACE:-any}
-      - OUTPUT_DIR=/data/output
-      - TIME_INTERVAL=${TIME_INTERVAL:-30}
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-}
+      - ELASTICSEARCH_INDEX_PREFIX=${ELASTICSEARCH_INDEX_PREFIX:-ics-packets}
+      
+      # Redis Configuration
+      - REDIS_HOST=${REDIS_HOST:-localhost}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_DB=${REDIS_DB:-0}
+      - REDIS_POOL_SIZE=${REDIS_POOL_SIZE:-8}
+      - REDIS_ASYNC_WRITERS=${REDIS_ASYNC_WRITERS:-2}
+      - REDIS_ASYNC_QUEUE_SIZE=${REDIS_ASYNC_QUEUE_SIZE:-10000}
+      - REDIS_TIMEOUT_MS=${REDIS_TIMEOUT_MS:-1000}
+      - REDIS_STREAM_MAX_LEN=${REDIS_STREAM_MAX_LEN:-100000}
+      - REDIS_ASSET_CACHE_TTL=${REDIS_ASSET_CACHE_TTL:-3600}
+      
+      # Parser Configuration
+      - NETWORK_INTERFACE=${NETWORK_INTERFACE:-any}
+      - PARSER_MODE=${PARSER_MODE:-realtime}
+      - BPF_FILTER=${BPF_FILTER:-}
+      - OUTPUT_DIR=${OUTPUT_DIR:-/data/output}
+      - ROLLING_INTERVAL=${ROLLING_INTERVAL:-0}
+      - PARSER_THREADS=${PARSER_THREADS:-0}
+      
+      # Elasticsearch Bulk Settings
+      - ES_BULK_SIZE=${ES_BULK_SIZE:-100}
+      - ES_BULK_FLUSH_INTERVAL_MS=${ES_BULK_FLUSH_INTERVAL_MS:-100}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ../Parser/assets:/app/assets:ro
       - ./output:/data/output
@@ -52,7 +81,13 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: ${PARSER_MEMORY_LIMIT:-2g}
+          cpus: '${PARSER_CPU_LIMIT:-2.0}'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
 
 networks:
   ot-network:
