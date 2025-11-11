@@ -1,47 +1,61 @@
 version: '3.8'
 
 services:
+  # ============================================
+  # Redis Service
+  # ============================================
   redis:
     image: redis:7-alpine
     container_name: redis
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "6379:6379"  # 🔥 호스트 포트 개방 (localhost:6379로 접근 가능)
     volumes:
       - redis-data:/data
     networks:
-      - ot-network
+      - network
     command: >
       redis-server 
       --appendonly yes 
       --save 60 1000
       --maxmemory ${REDIS_MEMORY_LIMIT:-512M}
       --maxmemory-policy allkeys-lru
+      --bind 0.0.0.0
+      --protected-mode no
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: ${REDIS_MEMORY_LIMIT:-512M}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
+  # ============================================
+  # Parser Service
+  # ============================================
   parser:
     build:
-      context: ../Parser 
+      context: ../Parser
       dockerfile: Dockerfile
     container_name: parser
+    network_mode: "host"  # 🔥 패킷 캡처를 위해 host 네트워크 필요
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     environment:
-      # Elasticsearch Configuration
-      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-localhost}
-      - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
-      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-}
-      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-}
-      - ELASTICSEARCH_INDEX_PREFIX=${ELASTICSEARCH_INDEX_PREFIX:-ics-packets}
-      
+      # ============================================
       # Redis Configuration
-      - REDIS_HOST=${REDIS_HOST:-localhost}
+      # ============================================
+      - REDIS_HOST=localhost  # 🔥 host 네트워크이므로 localhost
       - REDIS_PORT=${REDIS_PORT:-6379}
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=${REDIS_DB:-0}
@@ -52,28 +66,35 @@ services:
       - REDIS_STREAM_MAX_LEN=${REDIS_STREAM_MAX_LEN:-100000}
       - REDIS_ASSET_CACHE_TTL=${REDIS_ASSET_CACHE_TTL:-3600}
       
+      # ============================================
+      # Elasticsearch Configuration (원격)
+      # ============================================
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-100.126.141.58}  # 🔥 Dashboard PC IP
+      - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-}
+      - ELASTICSEARCH_INDEX_PREFIX=${ELASTICSEARCH_INDEX_PREFIX:-ics-packets}
+      - ELASTICSEARCH_USE_HTTPS=${ELASTICSEARCH_USE_HTTPS:-false}
+      - ES_BULK_SIZE=${ES_BULK_SIZE:-100}
+      - ES_BULK_FLUSH_INTERVAL_MS=${ES_BULK_FLUSH_INTERVAL_MS:-100}
+      
+      # ============================================
       # Parser Configuration
-      - NETWORK_INTERFACE=${NETWORK_INTERFACE:-any}
+      # ============================================
+      - NETWORK_INTERFACE=${NETWORK_INTERFACE:-veth1}
       - PARSER_MODE=${PARSER_MODE:-realtime}
       - BPF_FILTER=${BPF_FILTER:-}
       - OUTPUT_DIR=${OUTPUT_DIR:-/data/output}
       - ROLLING_INTERVAL=${ROLLING_INTERVAL:-0}
       - PARSER_THREADS=${PARSER_THREADS:-0}
       
-      # Elasticsearch Bulk Settings
-      - ES_BULK_SIZE=${ES_BULK_SIZE:-100}
-      - ES_BULK_FLUSH_INTERVAL_MS=${ES_BULK_FLUSH_INTERVAL_MS:-100}
-      
+      # ============================================
       # Logging
+      # ============================================
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ../Parser/assets:/app/assets:ro
       - ./output:/data/output
-    network_mode: "host"
-    privileged: true     
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
     depends_on:
       redis:
         condition: service_healthy
@@ -90,7 +111,7 @@ services:
         max-file: "5"
 
 networks:
-  ot-network:
+  network:
     driver: bridge
 
 volumes:
