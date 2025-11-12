@@ -1,0 +1,17 @@
+.DS_Store
+.vscode/
+.idea/
+
+/test_data
+/build
+/output
+/pcap
+/assets
+
+*.log
+*.tmp
+*.obj
+*.exe
+*.out
+*.class
+*.o
