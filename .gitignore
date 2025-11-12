@@ -2,17 +2,29 @@
 .vscode/
 .idea/
 
-/test_data
+# Build and output
 /build
 /output
 /pcap
-/assets
+/test_data
 /dummy_data
 
+# Docker
+.env.local
+docker-compose.override.yml
+
+# Logs
 *.log
+nohup.out
+
+# Temp files
 *.tmp
 *.obj
 *.exe
 *.out
 *.class
 *.o
+
+# OS
+.DS_Store
+Thumbs.db
